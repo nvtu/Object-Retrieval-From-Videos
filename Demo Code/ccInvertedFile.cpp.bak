@@ -1,0 +1,245 @@
+
+#include <cstring>
+#include <algorithm>
+#include <cmath>
+#include <fstream>
+#include <string>
+#include <iterator>
+#include <assert.h>
+
+#include "ccInvertedFile.hpp"
+
+//fill the inverted file with input counts
+//
+// data     - the input data, with one data vector per input consisting of 
+//            all the word labels for its tokens
+void ivBuildInvFile(ivFile* ivf, const mxArray* db, size_t docOffset, bool verbose)
+{
+    ivf->nwords = mxGetM(db);
+    ivf->ndocs = mxGetN(db);
+    
+    //allocate vectors
+    ivf->words.resize(ivf->nwords);
+    mxClassID classID = mxGetClassID(db);
+    assert(classID == mxDOUBLE_CLASS);
+    assert(mxIsSparse(db));
+    double* db_pr = (double*) mxGetData(db);
+    size_t* db_jc = (size_t*) mxGetJc(db);
+    size_t* db_ir = (size_t*) mxGetIr(db);
+    uint progress = 100;
+    uint percentage = ivf->ndocs/progress;
+    uint verb_thre = 0;
+    if(verbose){
+        double nz = mxGetNzmax(db);
+        cout<<"database sparsity: "<<nz/ivf->nwords/ivf->ndocs<<endl;
+    }
+    ivf->psumofdoc = new double[ivf->ndocs];
+    for(uint col=0; col<ivf->ndocs; col++) {
+        //get the staring index for this column
+        size_t rstart = db_jc[col];
+        size_t rend = db_jc[col+1];
+        double& sumofdoc = ivf->psumofdoc[col];
+        sumofdoc = 0;
+        //column has something
+        for (size_t r=rstart; r<rend; r++) {
+            ivWordDoc wordDoc;
+            wordDoc.docID=col+docOffset;
+            wordDoc.termFreq= *(db_pr+r);
+            sumofdoc += wordDoc.termFreq;
+            ivf->words[*(db_ir+r)].push_back(wordDoc);
+            //cout<<"word "<<*(db_ir+r)<<": doc "<<col<<" val "<<*(db_pr+r)<<endl;
+        }
+        if (verbose){
+            if(percentage==0){
+                mexPrintf("\r%d/%d",col+1,ivf->ndocs);
+                mexEvalString("drawnow;"); // to print string immediately.
+               // cout<<col+1<<"/"<<ivf->ndocs<<endl;
+            }
+            else if(col>=verb_thre){
+                mexPrintf("\r%d%%",col/percentage);
+                mexEvalString("drawnow;"); // to print string immediately.
+                //cout<<col/percentage*progress<<"%"<<endl;
+                verb_thre += percentage;
+            }
+        }
+    }
+}
+
+mxArray* ivSearchInvFile_l1(ivFile& ivf, const mxArray* queries, bool verbose)
+{
+    size_t nwords, nqueries;
+    nwords = mxGetM(queries);
+    nqueries = mxGetN(queries);
+    assert(nwords == ivf.nwords);
+    mxArray* sim = mxCreateNumericMatrix(ivf.ndocs, nqueries, mxSINGLE_CLASS, mxREAL);
+    float *psim = (float*)mxGetPr(sim);
+    mxClassID classID = mxGetClassID(queries);
+    assert(classID == mxDOUBLE_CLASS);
+    assert(mxIsSparse(queries));
+    uint progress = 100;
+    uint percentage = nqueries/progress;
+    uint verb_thre = 0;
+    if(verbose){
+        double nz = mxGetNzmax(queries);
+        cout<<"query sparsity: "<<nz/nwords/nqueries<<endl;
+    }
+    double* query_pr = (double*) mxGetData(queries);
+    size_t* query_jc = (size_t*) mxGetJc(queries);
+    size_t* query_ir = (size_t*) mxGetIr(queries);
+    for(int col=0; col<nqueries; col++)
+    {
+        //get the staring index for this column
+        size_t rstart = query_jc[col];
+        size_t rend = query_jc[col+1];
+        //column has something
+        for (size_t r=rstart; r<rend; r++)
+        {
+            size_t word_id = *(query_ir+r);
+            for (ivWordDocIt it=ivf.words[word_id].begin(); it!=ivf.words[word_id].end(); it++)
+                psim[it->docID] += min(it->termFreq,float(*(query_pr+r)));
+        }
+        psim += ivf.ndocs;
+        if (verbose && nqueries>1){
+            if(percentage==0){
+                mexPrintf("\r%d/%d",col+1,nqueries);
+                mexEvalString("drawnow;"); // to print string immediately.
+                //cout<<col+1<<"/"<<nqueries<<endl;
+            }
+            else if(col>=verb_thre){
+                mexPrintf("\r%d%%",col/percentage);
+                mexEvalString("drawnow;"); // to print string immediately.
+                //cout<<col/percentage<<"%"<<endl;
+                verb_thre += percentage;
+            }
+        }
+    }
+    return sim;
+}
+
+mxArray* ivSearchInvFile_l2(ivFile& ivf, const mxArray* queries, bool verbose)
+{
+    size_t nwords, nqueries;
+    nwords = mxGetM(queries);
+    nqueries = mxGetN(queries);
+    assert(nwords == ivf.nwords);
+    mxArray* sim = mxCreateNumericMatrix(ivf.ndocs, nqueries, mxSINGLE_CLASS, mxREAL);
+    float *psim = (float*)mxGetPr(sim);
+    mxClassID classID = mxGetClassID(queries);
+    assert(classID == mxDOUBLE_CLASS);
+    assert(mxIsSparse(queries));
+    uint progress = 100;
+    uint percentage = nqueries/progress;
+    uint verb_thre = 0;
+    if(verbose){
+        double nz = mxGetNzmax(queries);
+        cout<<"query sparsity: "<<nz/nwords/nqueries<<endl;
+    }
+    double* query_pr = (double*) mxGetData(queries);
+    size_t* query_jc = (size_t*) mxGetJc(queries);
+    size_t* query_ir = (size_t*) mxGetIr(queries);
+    for(int col=0; col<nqueries; col++)
+    {
+        //get the staring index for this column
+        size_t rstart = query_jc[col];
+        size_t rend = query_jc[col+1];
+        //column has something
+        for (size_t r=rstart; r<rend; r++)
+        {
+            size_t word_id = *(query_ir+r);
+            for (ivWordDocIt it=ivf.words[word_id].begin(); it!=ivf.words[word_id].end(); it++)
+                psim[it->docID] += it->termFreq * float(*(query_pr+r));
+        }
+        psim += ivf.ndocs;
+        if (verbose && nqueries>1){
+            if(percentage==0){
+                mexPrintf("\r%d/%d",col+1,nqueries);
+                mexEvalString("drawnow;"); // to print string immediately.
+                //cout<<col+1<<"/"<<nqueries<<endl;
+            }
+            else if(col>=verb_thre){
+                mexPrintf("\r%d%%",col/percentage);
+                mexEvalString("drawnow;"); // to print string immediately.
+                //cout<<col/percentage<<"%"<<endl;
+                verb_thre += percentage;
+            }
+        }
+    }
+    return sim;
+}
+
+mxArray* ivSearchInvFile_asym(ivFile& ivf, const mxArray* queries, double w1, double w2, double w3, bool verbose)
+{
+    int nwords, nqueries;
+    nwords = mxGetM(queries);
+    nqueries = mxGetN(queries);
+    assert(nwords == ivf.nwords);
+    mxArray* sim = mxCreateNumericMatrix(ivf.ndocs, nqueries, mxSINGLE_CLASS, mxREAL);
+    float *psim = (float*)mxGetPr(sim);
+    float *pSmallQuery = new float[ivf.ndocs*nqueries];
+    memset(pSmallQuery, 0, sizeof(float)*ivf.ndocs*nqueries);
+    mxClassID classID = mxGetClassID(queries);
+    assert(classID == mxDOUBLE_CLASS);
+    assert(mxIsSparse(queries));
+    uint progress = 100;
+    uint percentage = nqueries/progress;
+    uint verb_thre = 0;
+    if(verbose){
+        double nz = mxGetNzmax(queries);
+        cout<<"query sparsity: "<<nz/nwords/nqueries<<endl;
+    }
+    double* query_pr = (double*) mxGetData(queries);
+    size_t* query_jc = (size_t*) mxGetJc(queries);
+    size_t* query_ir = (size_t*) mxGetIr(queries);
+    float* pSmallQueryPtr = pSmallQuery;
+    float* pQuerySum = new float[nqueries];
+    memset(pQuerySum, 0, sizeof(float)*nqueries);
+    for(int col=0; col<nqueries; col++)
+    {
+        //get the staring index for this column
+        size_t rstart = query_jc[col];
+        size_t rend = query_jc[col+1];
+        //column has something
+        for (int r=rstart; r<rend; r++)
+        {
+            size_t word_id = *(query_ir+r);
+            float q = float(*query_pr+r);
+            pQuerySum[col] += q;
+            for (ivWordDocIt it=ivf.words[word_id].begin(); it!=ivf.words[word_id].end(); it++){
+                float t = it->termFreq;
+                if(t>q){
+                    pSmallQueryPtr[it->docID] += t-q;
+                    psim[it->docID] += q;
+                }
+                else
+                    psim[it->docID] += t;
+            }
+        }
+        psim += ivf.ndocs;
+        pSmallQueryPtr += ivf.ndocs;
+        if (verbose && nqueries>1){
+            if(percentage==0){
+                mexPrintf("\r%d/%d",col+1,nqueries);
+                mexEvalString("drawnow;"); // to print string immediately.
+                //cout<<col+1<<"/"<<nqueries<<endl;
+            }
+            else if(col>=verb_thre){
+                mexPrintf("\r%d%%",col/percentage);
+                mexEvalString("drawnow;"); // to print string immediately.
+                //cout<<col/percentage<<"%"<<endl;
+                verb_thre += percentage;
+            }
+        }
+    }
+//    pSmallQueryPtr = pSmallQuery;
+//    psim = (float*)mxGetPr(sim);
+//    for(int col=0; col<nqueries; col++)
+//    {
+//        for(int r=0; r<ivf.ndocs; r++)
+//            psim[r] = (pQuerySum[col]-psim[r])*w1 + psim[r]*w2 + pSmallQueryPtr[r]*w3;
+//        psim += ivf.ndocs;
+//        pSmallQueryPtr += ivf.ndocs;
+//    }
+    delete []pSmallQuery;
+    delete []pQuerySum;
+    return sim;
+}

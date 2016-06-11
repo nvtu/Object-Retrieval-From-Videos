@@ -1,0 +1,33 @@
+// Author: Mohamed Aly <malaa at vision d0t caltech d0t edu>
+// Date: October 6, 2010
+
+#include "mex.h"
+
+#include <string>
+#include <cassert>
+#include <cstring>
+#include <climits>
+#include "ccInvertedFile.hpp"
+
+//inputs
+#define dataIn    prhs[0]
+//outputs          
+#define ivFileOut plhs[0]
+          
+         
+
+void mexFunction( int nlhs, mxArray *plhs[],
+                  int nrhs, const mxArray *prhs[])
+{
+   
+  if (nrhs!=2)	mexErrMsgTxt("Two inputs required");
+
+  //make the ivFile object  
+  ivFile* ivfile = ivBuildInvFile(dataIn);
+
+  //return pointer to ivFile
+  mxArray* ivf = mxCreateNumericMatrix(1,1,mxINDEX_CLASS,mxREAL);
+  *(ivFile**) mxGetPr(ivf) = ivfile;
+  ivFileOut = ivf;
+}
+

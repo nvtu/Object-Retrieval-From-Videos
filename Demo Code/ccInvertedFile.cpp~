@@ -1,0 +1,72 @@
+
+#include <algorithm>
+#include <cmath>
+#include <fstream>
+#include <string>
+#include <iterator>
+#include <assert.h>
+
+#include "ccInvertedFile.hpp"
+
+//fill the inverted file with input counts
+//
+// data     - the input data, with one data vector per input consisting of 
+//            all the word labels for its tokens
+void ivBuildInvFile(ivFile& ivf, const mxArray* db)
+{
+  ivf.nwords = mxGetM(db);
+  ivf.ndocs = mxGetN(db);
+  
+  //allocate vectors
+  ivf.words.resize(ivf.nwords);
+  mxClassID classID = mxGetClassID(db);
+  assert(classID == mxDOUBLE_CLASS);
+  assert(mxIsSparse(db));
+  size_t nz = mxGetNzmax(db);
+  double* db_pr = (double*) mxGetData(db);
+  size_t* db_jc = (size_t*) mxGetJc(db);
+  size_t* db_ir = (size_t*) mxGetIr(db);
+  for(uint col=0; col<ivf.ndocs; col++)
+  {
+      //get the staring index for this column
+      size_t rstart = db_jc[col];
+      size_t rend = db_jc[col+1];
+      //column has something
+      for (int r=rstart; r<rend; r++)
+      {
+          ivWordDoc wordDoc(col,*(db_pr+r));
+          ivf.words[*(db_ir+r)].push_back(wordDoc);
+      }
+  }
+}
+
+void ivSearchInvFile(ivFile& ivf, const mxArray* queries, mxArray*& sim)
+{
+  int nwords, nqueries;
+  nwords = mxGetM(queries);
+  nqueries = mxGetN(queries);
+  assert(nwords == ivf.nwords);
+  sim = mxCreateNumericMatrix(ivf.ndocs, nqueries, mxSINGLE_CLASS, mxREAL);
+  float *psim = (float*)mxGetPr(sim);
+  mxClassID classID = mxGetClassID(queries);
+  assert(classID == mxSINGLE_CLASS);
+  assert(mxIsSparse(queries));
+  size_t nz = mxGetNzmax(queries);
+  float* query_pr = (float*) mxGetData(queries);
+  size_t* query_jc = (size_t*) mxGetJc(queries);
+  size_t* query_ir = (size_t*) mxGetIr(queries);
+  for(int col=0; col<nqueries; col++)
+  {
+      //get the staring index for this column
+      size_t rstart = query_jc[col];
+      size_t rend = query_jc[col+1];
+      //column has something
+      for (int r=rstart; r<rend; r++)
+      {
+          int word_id = *(query_ir+r);
+          for (ivWordDocIt it=ivf.words[word_id].begin(); it!=ivf.words[word_id].end(); it++)
+              psim[it->first] += min(it->second,*(query_pr+r));
+      }
+      psim += ivf.ndocs;
+  }
+}
