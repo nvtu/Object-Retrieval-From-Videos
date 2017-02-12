@@ -7,6 +7,7 @@ This is a scientific research project in Computer Vision which aims to find obje
 * Support human limitation in memorizing objects.
 * Help finding lost objects in daily life.
 * Propose a novel method which applies Computer Vision into real life.
+* Learn and implement Bag-of-Words model.
 
 ##Compilation
 
@@ -30,3 +31,7 @@ You should change it into:
 * Quoc-Huu Che
 * Manh-Tien H.Nguyen
 * Van-Tu Ninh
+
+##Instructor
+
+Minh-Triet Tran
